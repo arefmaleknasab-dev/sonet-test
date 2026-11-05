@@ -9,6 +9,7 @@ import type { CabinetUnit, Wall } from "../../domain/types";
 import { useFormat } from "../../hooks/useFormat";
 import { useProjectStore } from "../../store/projectStore";
 import { Button, Field, NumberField, SectionTitle, TextField } from "../ui/controls";
+import { ParametricProperties } from "./ParametricProperties";
 
 function MaterialSwatches({ value, onPick }: { value: string | null; onPick: (id: string) => void }) {
   return (
@@ -55,6 +56,55 @@ function UnitProperties({ unit }: { unit: CabinetUnit }) {
   const patch = useProjectStore((s) => s.patchUnit);
   const def = resolveDefinition(unit.defId);
   const f = useFormat();
+  const parametric = !!def.parametric;
+
+  if (parametric) {
+    return (
+      <div className="flex flex-col gap-5">
+        <section>
+          <SectionTitle>مشخصات</SectionTitle>
+          <Field label="نام">
+            <TextField value={unit.name} onCommit={(v) => patch(unit.id, { name: v })} />
+          </Field>
+          <p className="mt-1.5 text-[11px] text-muted">مدل: {def.name}</p>
+        </section>
+        <ParametricProperties unit={unit} />
+        <section>
+          <SectionTitle>موقعیت و چرخش</SectionTitle>
+          <div className="grid grid-cols-3 gap-2">
+            <Field label="X">
+              <NumberField value={unit.x} onCommit={(v) => patch(unit.id, { x: v })} />
+            </Field>
+            <Field label="Y">
+              <NumberField value={unit.y} onCommit={(v) => patch(unit.id, { y: v })} />
+            </Field>
+            <Field label="Z">
+              <NumberField value={unit.z} min={0} max={5000} onCommit={(v) => patch(unit.id, { z: v })} />
+            </Field>
+
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            <Field label="چرخش (°)">
+              <NumberField
+                kind="angle"
+                value={unit.rotation}
+                step={90}
+                min={-360}
+                max={720}
+                onCommit={(v) => patch(unit.id, { rotation: ((v % 360) + 360) % 360 })}
+              />
+            </Field>
+          </div>
+        </section>
+        <section>
+          <SectionTitle>متریال</SectionTitle>
+          <MaterialSwatches value={unit.materialId} onPick={(id) => patch(unit.id, { materialId: id })} />
+        </section>
+        <ActionRow />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <section>
@@ -163,6 +213,60 @@ function WallProperties({ wall }: { wall: Wall }) {
   );
 }
 
+function MultiParametricSection() {
+  const patchSelectedParams = useProjectStore((s) => s.patchSelectedParams);
+  const units = useProjectStore((s) => s.project.units);
+  const selection = useProjectStore((s) => s.selection);
+  const list = units.filter((u) => selection.includes(u.id) && resolveDefinition(u.defId).parametric);
+  if (!list.length) return null;
+  const first = list[0].params;
+  const t = first?.thickness ?? { left: 16, right: 16, bottom: 16, back: 16, rail: 16, sheet: 3 };
+  return (
+    <section>
+      <SectionTitle>ضخامت جمعی یونیت‌های پارامتریک</SectionTitle>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="ضخامت همه قطعات">
+          <NumberField
+            value={t.left}
+            min={3}
+            max={60}
+            onCommit={(v) =>
+              patchSelectedParams({ thickness: { left: v, right: v, bottom: v, back: v, rail: v } })
+            }
+          />
+        </Field>
+        <Field label="ضخامت ورق">
+          <NumberField
+            value={t.sheet}
+            min={1}
+            max={12}
+            onCommit={(v) => patchSelectedParams({ thickness: { sheet: v } })}
+          />
+        </Field>
+        <Field label="عمق شیار">
+          <NumberField
+            value={first?.grooveDepth ?? 6}
+            min={0}
+            max={30}
+            onCommit={(v) => patchSelectedParams({ grooveDepth: v })}
+          />
+        </Field>
+        <Field label="ارتفاع پایه‌ها">
+          <NumberField
+            value={first?.feet.height ?? 100}
+            min={0}
+            max={600}
+            onCommit={(v) => patchSelectedParams({ feet: { height: v } })}
+          />
+        </Field>
+      </div>
+      <p className="mt-1.5 text-[11px] text-muted">
+        این مقادیر روی همه یونیت‌های پارامتریک انتخاب‌شده اعمال می‌شود.
+      </p>
+    </section>
+  );
+}
+
 const SHORTCUTS: [string, string][] = [
   ["V / W / H", "انتخاب / دیوار / دست"],
   ["R", "چرخش ۹۰ درجه"],
@@ -251,6 +355,7 @@ export function PropertiesPanel() {
             <MaterialSwatches value={mat} onPick={(id) => patchUnits(units.map((u) => u.id), { materialId: id })} />
           </section>
         )}
+        {units.some((u) => resolveDefinition(u.defId).parametric) && <MultiParametricSection />}
         <ActionRow />
       </div>
     );

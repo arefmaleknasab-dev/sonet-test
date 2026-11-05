@@ -59,6 +59,9 @@ export function computeFronts(def: UnitDefinition): FrontPanel[] {
         { x: 0, y: 0, w: 1, h: 0.32, kind: "door", handle: "right" },
         { x: 0, y: 0.32, w: 1, h: 0.68, kind: "door", handle: "right" },
       ];
+    case "parametric":
+      // Parametric units are described by their own part model, not by fronts.
+      return [];
     case "plain":
     default:
       return [];

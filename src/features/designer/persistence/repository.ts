@@ -1,3 +1,5 @@
+import { resolveDefinition } from "../domain/catalog";
+import { normalizeParams, DEFAULT_PARAMS } from "../domain/parametric";
 import type { Project, ProjectSummary } from "../domain/types";
 
 /**
@@ -33,7 +35,12 @@ export function parseProject(raw: unknown): Project | null {
   if (!raw || typeof raw !== "object") return null;
   const p = raw as Partial<Project>;
   if (p.schemaVersion !== 1 || !Array.isArray(p.units) || !Array.isArray(p.walls) || !p.room || !p.id) return null;
-  return p as Project;
+  // Repair parametric units (missing / legacy params, out-of-range values).
+  const units = p.units.map((u) => {
+    if (!u || !resolveDefinition(u.defId).parametric) return u;
+    return { ...u, params: normalizeParams(u.params ?? DEFAULT_PARAMS) };
+  });
+  return { ...(p as Project), units };
 }
 
 export const localProjectRepository: ProjectRepository = {

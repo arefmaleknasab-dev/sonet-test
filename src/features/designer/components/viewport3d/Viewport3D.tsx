@@ -32,6 +32,7 @@ export function Viewport3D() {
   const project = useProjectStore((s) => s.project);
   const selection = useProjectStore((s) => s.selection);
   const wallMode = useUiStore((s) => s.wallMode);
+  const selectedParts = useProjectStore((s) => s.selectedParts);
   const theme = useResolvedTheme();
   const accent = usePrefs((s) => s.accent);
 
@@ -134,7 +135,11 @@ export function Viewport3D() {
       engine.scene.remove(engine.built.group);
       engine.built.dispose();
     }
-    const built = buildProjectGroup(project, selection, wallMode, { dark, accent: accentColor });
+    const built = buildProjectGroup(project, selection, wallMode, {
+      dark,
+      accent: accentColor,
+      selectedParts: new Set(selectedParts),
+    });
     engine.built = built;
     engine.scene.add(built.group);
     engine.scene.background = new THREE.Color(dark ? 0x161a21 : 0xe9ecf1);
@@ -156,7 +161,7 @@ export function Viewport3D() {
       engine.fit(built.center, built.size);
     }
     engine.render();
-  }, [project, selection, wallMode, theme, accent]);
+  }, [project, selection, wallMode, theme, accent, selectedParts]);
 
   /* ---------- picking ---------- */
   const onPointerDown = (e: React.PointerEvent) => {
@@ -187,8 +192,31 @@ export function Viewport3D() {
       }
     }
     const ps = useProjectStore.getState();
-    if (id) ps.select([id], e.shiftKey ? "toggle" : "replace");
-    else if (!e.shiftKey) ps.clearSelection();
+    let partId: string | null = null;
+    for (const h of hits) {
+      let o: THREE.Object3D | null = h.object;
+      let partKey: string | null = null;
+      while (o) {
+        if (o.userData.partId) partKey = `${o.userData.entityId}::part:${o.userData.partId}`;
+        if (o.userData.entityId) break;
+        o = o.parent;
+      }
+      if (partKey) {
+        partId = partKey;
+        break;
+      }
+    }
+    if (partId && e.altKey) {
+      ps.togglePart(partId);
+      return;
+    }
+    if (id) {
+      ps.select([id], e.shiftKey ? "toggle" : "replace");
+      ps.clearParts();
+    } else if (!e.shiftKey) {
+      ps.clearSelection();
+      ps.clearParts();
+    }
   };
 
   const wallOptions: { value: WallMode3D; label: string }[] = [
@@ -223,7 +251,7 @@ export function Viewport3D() {
       <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center" dir="rtl">
         <div className="flex items-center gap-2 rounded-full border border-line bg-panel/80 px-3 py-1 text-[11.5px] text-muted backdrop-blur">
           <ScanEye size={13} />
-          چرخش: کشیدن • جابه‌جایی: کلیک راست • زوم: اسکرول • کلیک روی یونیت: انتخاب
+          چرخش: کشیدن • جابه‌جایی: کلیک راست • زوم: اسکرول • کلیک روی یونیت: انتخاب • Alt + کلیک روی قطعه: انتخاب قطعه
           <Box size={13} />
         </div>
       </div>

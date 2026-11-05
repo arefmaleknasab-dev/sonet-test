@@ -3,6 +3,8 @@ import { LIMITS } from "../domain/catalog";
 import { createProject, DEFAULT_NEW_PROJECT } from "../domain/factory";
 import type { NewProjectOptions } from "../domain/factory";
 import { clamp } from "../domain/geometry";
+import { anchorDelta, normalizeParams, type ParamUnitParams } from "../domain/parametric";
+import { resolveDefinition } from "../domain/catalog";
 import { uid } from "../domain/id";
 import {
   duplicateEntities,
@@ -21,6 +23,8 @@ interface ProjectState {
   past: Project[];
   future: Project[];
   selection: string[];
+  /** Selected parametric parts, encoded as `<unitId>::part:<partId>`. */
+  selectedParts: string[];
   dirty: boolean;
   lastSavedAt: number | null;
 
@@ -33,6 +37,9 @@ interface ProjectState {
   // selection
   select: (ids: string[], mode?: SelectMode) => void;
   clearSelection: () => void;
+  togglePart: (key: string) => void;
+  setParts: (keys: string[]) => void;
+  clearParts: () => void;
   selectAll: () => void;
 
   // history
@@ -45,12 +52,34 @@ interface ProjectState {
   addUnit: (unit: CabinetUnit) => void;
   patchUnit: (id: string, patch: Partial<CabinetUnit>) => void;
   patchUnits: (ids: string[], patch: Partial<CabinetUnit>) => void;
+  /** Sets the envelope (width/height/depth) non-destructively, keeping edges anchored. */
+  setUnitEnvelope: (id: string, next: { width?: number; height?: number; depth?: number }) => void;
+  /** Deep-merges construction parameters of a parametric unit. */
+  patchUnitParams: (id: string, patch: DeepPartial<ParamUnitParams>) => void;
+  /** Applies one parameter change to every selected parametric unit. */
+  patchSelectedParams: (patch: DeepPartial<ParamUnitParams>) => void;
   addWall: (wall: Omit<Wall, "id">) => void;
   patchWall: (id: string, patch: Partial<Wall>) => void;
   duplicateSelection: () => void;
   rotateSelection: (delta?: number) => void;
   deleteSelection: () => void;
   nudgeSelection: (dx: number, dy: number) => void;
+}
+
+export type DeepPartial<T> = {
+  [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
+};
+
+/** Deep-merges a partial parameter patch onto a normalized parameter set. */
+export function mergeParams(base: ParamUnitParams, patch: DeepPartial<ParamUnitParams>): ParamUnitParams {
+  return normalizeParams({
+    ...base,
+    ...patch,
+    thickness: { ...base.thickness, ...(patch.thickness ?? {}) },
+    backRail: { ...base.backRail, ...(patch.backRail ?? {}) },
+    stretcher: { ...base.stretcher, ...(patch.stretcher ?? {}) },
+    feet: { ...base.feet, ...(patch.feet ?? {}) },
+  });
 }
 
 function sanitizeUnit(u: CabinetUnit): CabinetUnit {
@@ -60,6 +89,7 @@ function sanitizeUnit(u: CabinetUnit): CabinetUnit {
     height: clamp(u.height, LIMITS.minSize, LIMITS.maxHeight),
     depth: clamp(u.depth, LIMITS.minSize, LIMITS.maxDepth),
     z: clamp(u.z, 0, 5000),
+    ...(u.params ? { params: normalizeParams(u.params) } : {}),
   };
 }
 
@@ -84,6 +114,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     past: [],
     future: [],
     selection: [],
+    selectedParts: [],
     dirty: false,
     lastSavedAt: null,
 
@@ -120,7 +151,20 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         return { selection: Array.from(cur) };
       }),
 
-    clearSelection: () => set((s) => (s.selection.length ? { selection: [] } : s)),
+    clearSelection: () => set((s) => (s.selection.length ? { selection: [], selectedParts: [] } : s)),
+
+    togglePart: (key) =>
+      set((s) => {
+        const unitId = key.split("::")[0];
+        const sameUnit = s.selectedParts.filter((k) => k.startsWith(`${unitId}::`));
+        const has = sameUnit.includes(key);
+        const next = has ? sameUnit.filter((k) => k !== key) : [...sameUnit, key];
+        return { selectedParts: next, selection: s.selection.includes(unitId) ? s.selection : [unitId, ...s.selection] };
+      }),
+
+    setParts: (keys) => set({ selectedParts: keys }),
+
+    clearParts: () => set((s) => (s.selectedParts.length ? { selectedParts: [] } : s)),
 
     selectAll: () =>
       set((s) => ({ selection: [...s.project.units.map((u) => u.id), ...s.project.walls.map((w) => w.id)] })),
@@ -174,6 +218,54 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         ...project,
         units: project.units.map((u) => (set_.has(u.id) ? sanitizeUnit({ ...u, ...patch }) : u)),
       });
+    },
+
+    setUnitEnvelope: (id, next) => {
+      const { project } = get();
+      const unit = project.units.find((u) => u.id === id);
+      if (!unit) return;
+      const width = clamp(next.width ?? unit.width, LIMITS.minSize, LIMITS.maxWidth);
+      const height = clamp(next.height ?? unit.height, LIMITS.minSize, LIMITS.maxHeight);
+      const depth = clamp(next.depth ?? unit.depth, LIMITS.minSize, LIMITS.maxDepth);
+      const params = unit.params ? normalizeParams(unit.params) : undefined;
+      const d = anchorDelta(unit.rotation, {
+        oldWidth: unit.width,
+        newWidth: width,
+        oldDepth: unit.depth,
+        newDepth: depth,
+        growth: params?.widthGrowth ?? "center",
+      });
+      commit({
+        ...project,
+        units: project.units.map((u) =>
+          u.id === id ? sanitizeUnit({ ...u, width, height, depth, x: u.x + d.dx, y: u.y + d.dy }) : u,
+        ),
+      });
+    },
+
+    patchUnitParams: (id, patch) => {
+      const { project } = get();
+      const unit = project.units.find((u) => u.id === id);
+      if (!unit) return;
+      const def = resolveDefinition(unit.defId);
+      if (!def.parametric) return;
+      const params = mergeParams(normalizeParams(unit.params), patch);
+      commit({
+        ...project,
+        units: project.units.map((u) => (u.id === id ? { ...u, params } : u)),
+      });
+    },
+
+    patchSelectedParams: (patch) => {
+      const { project, selection } = get();
+      let changed = false;
+      const units = project.units.map((u) => {
+        if (!selection.includes(u.id) || !resolveDefinition(u.defId).parametric) return u;
+        changed = true;
+        return { ...u, params: mergeParams(normalizeParams(u.params), patch) };
+      });
+      if (!changed) return;
+      commit({ ...project, units });
     },
 
     addWall: (wall) => {

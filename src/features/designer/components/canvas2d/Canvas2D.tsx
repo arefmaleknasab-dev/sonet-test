@@ -16,6 +16,7 @@ import {
 } from "../../domain/geometry";
 import type { Guide } from "../../domain/geometry";
 import { getMaterial } from "../../domain/materials";
+import { anchorDelta, normalizeParams } from "../../domain/parametric";
 import { projectBounds, selectionBounds, translateEntities } from "../../domain/operations";
 import { computePlacement } from "../../domain/placement";
 import type { CabinetUnit, Project, Rect, Vec2 } from "../../domain/types";
@@ -320,8 +321,26 @@ export function Canvas2D() {
           d.moved = true;
           ps.pushHistory(d.startProject);
         }
-        const x = u0.x + lcx * c - lcy * s;
-        const y = u0.y + lcx * s + lcy * c;
+        let x = u0.x + lcx * c - lcy * s;
+        let y = u0.y + lcx * s + lcy * c;
+        // Parametric units keep their anchored edge fixed: the width grows in the
+        // configured direction and the depth always grows towards the front.
+        if (resolveDefinition(u0.defId).parametric) {
+          // The generic handle shift is replaced by the parametric anchors so the
+          // back edge and the anchored side edge stay exactly in place.
+          x = u0.x;
+          y = u0.y;
+          const growth = normalizeParams(u0.params).widthGrowth;
+          const d = anchorDelta(u0.rotation, {
+            oldWidth: u0.width,
+            newWidth: width,
+            oldDepth: u0.depth,
+            newDepth: depth,
+            growth,
+          });
+          x += d.dx;
+          y += d.dy;
+        }
         ps.setTransient({
           ...d.startProject,
           units: d.startProject.units.map((u) => (u.id === u0.id ? { ...u, width, depth, x, y } : u)),

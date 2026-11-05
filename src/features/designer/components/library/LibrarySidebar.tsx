@@ -10,6 +10,7 @@ import { usePrefs } from "../../store/preferencesStore";
 import { useProjectStore } from "../../store/projectStore";
 import { BASE_SCALE, useUiStore } from "../../store/uiStore";
 import { DND_MIME } from "../canvas2d/Canvas2D";
+import { ParametricThumb } from "./ParametricThumb";
 import { UnitFrontIcon } from "./UnitFrontIcon";
 
 function UnitCard({ def }: { def: UnitDefinition }) {
@@ -45,7 +46,7 @@ function UnitCard({ def }: { def: UnitDefinition }) {
       className="group cursor-grab rounded-xl border border-line bg-panel2 p-2 transition hover:-translate-y-0.5 hover:border-accent/60 hover:shadow-[var(--shadow)] active:cursor-grabbing"
     >
       <div className="aspect-square w-full rounded-lg bg-panel p-1">
-        <UnitFrontIcon def={def} />
+        {def.parametric ? <ParametricThumb def={def} /> : <UnitFrontIcon def={def} />}
       </div>
       <div className="mt-1.5 truncate text-[12px] font-medium">{def.name}</div>
       <div className="text-[10.5px] text-muted" dir="rtl">

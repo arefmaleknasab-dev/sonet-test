@@ -1,5 +1,6 @@
 import { uid } from "./id";
 import { DEFAULT_MATERIAL_ID } from "./materials";
+import { DEFAULT_PARAMS } from "./parametric";
 import { buildRoom } from "./roomTemplates";
 import type { CabinetUnit, Project, RoomTemplateId, UnitDefinition, Vec2 } from "./types";
 
@@ -18,6 +19,7 @@ export function createUnitFromDef(def: UnitDefinition, pos: Vec2, rotation = 0):
     z: def.elevation,
     rotation,
     materialId: DEFAULT_MATERIAL_ID,
+    ...(def.parametric ? { params: DEFAULT_PARAMS } : {}),
   };
 }
 

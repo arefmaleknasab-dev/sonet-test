@@ -2,14 +2,18 @@ import * as THREE from "three";
 import { resolveDefinition } from "../../domain/catalog";
 import { computeFronts } from "../../domain/frontLayout";
 import { rad, wallGeometry } from "../../domain/geometry";
+import { buildAssembly } from "../../domain/parametric";
 import { getMaterial } from "../../domain/materials";
 import type { CabinetUnit, Project, WallMode3D } from "../../domain/types";
+import { buildParametricUnit } from "./parametricMesh";
 
 const MM = 0.001;
 
 export interface SceneTheme {
   dark: boolean;
   accent: string;
+  /** Selected parametric part ids (`<unitId>::part:<partId>`). */
+  selectedParts?: Set<string>;
 }
 
 class MaterialCache {
@@ -46,6 +50,7 @@ function cylinder(r: number, h: number, mat: THREE.Material, x: number, y: numbe
 /** Builds a Three.js object for a unit. Local frame: origin at bottom centre, front = +Z. */
 function buildUnit(u: CabinetUnit, cache: MaterialCache, theme: SceneTheme, selected: boolean): THREE.Group {
   const def = resolveDefinition(u.defId);
+  if (def.parametric) return buildParametricUnitGroup(u, cache, theme, selected);
   const mat = getMaterial(u.materialId);
   const W = u.width * MM;
   const H = u.height * MM;
@@ -129,6 +134,44 @@ function buildUnit(u: CabinetUnit, cache: MaterialCache, theme: SceneTheme, sele
     g.add(edges);
   }
   return g;
+}
+
+function buildParametricUnitGroup(
+  u: CabinetUnit,
+  cache: MaterialCache,
+  theme: SceneTheme,
+  selected: boolean,
+): THREE.Group {
+  const mat = getMaterial(u.materialId);
+  const selectedParts = new Set(
+    Array.from(theme.selectedParts ?? []).filter((id) => id.startsWith(`${u.id}::part:`)),
+  );
+  const built = buildParametricUnit(u, {
+    accent: theme.accent,
+    material: mat,
+    cache,
+    entityId: u.id,
+    selectedParts,
+  });
+  const wrapper = new THREE.Group();
+  wrapper.add(built.group);
+  wrapper.userData.entityId = u.id;
+  wrapper.position.set(u.x * MM, u.z * MM, u.y * MM);
+  wrapper.rotation.y = -rad(u.rotation);
+
+  if (selected) {
+    const a = buildAssembly({ width: u.width, height: u.height, depth: u.depth, params: u.params });
+    const W = u.width * MM;
+    const H = a.metrics.totalHeight * MM;
+    const D = u.depth * MM;
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(W + 0.03, H + 0.03, D + 0.03)),
+      new THREE.LineBasicMaterial({ color: new THREE.Color(theme.accent) }),
+    );
+    edges.position.y = H / 2;
+    wrapper.add(edges);
+  }
+  return wrapper;
 }
 
 export interface BuiltScene {

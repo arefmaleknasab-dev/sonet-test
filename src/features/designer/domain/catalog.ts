@@ -1,3 +1,4 @@
+import { DEFAULT_PARAMS } from "./parametric";
 import type { FrontStyle, UnitCategory, UnitCategoryId, UnitDefinition } from "./types";
 
 export const CATEGORIES: UnitCategory[] = [
@@ -8,6 +9,7 @@ export const CATEGORIES: UnitCategory[] = [
   { id: "sink", name: "سینک" },
   { id: "oven", name: "فر" },
   { id: "simple", name: "یونیت ساده" },
+  { id: "param", name: "یونیت پارامتریک" },
 ];
 
 export const LIMITS = {
@@ -22,6 +24,7 @@ interface Extra {
   elevation?: number;
   countertop?: boolean;
   plinth?: boolean;
+  parametric?: boolean;
 }
 
 function def(
@@ -44,7 +47,8 @@ function def(
     dimensions: { width, height, depth },
     elevation: extra.elevation ?? 0,
     countertop: extra.countertop ?? (isBase && height < 1000),
-    plinth: extra.plinth ?? (category !== "wall" && category !== "simple"),
+    plinth: extra.plinth ?? (category !== "wall" && category !== "simple" && category !== "param"),
+    parametric: extra.parametric,
   };
 }
 
@@ -74,6 +78,13 @@ export const UNIT_DEFINITIONS: UnitDefinition[] = [
   // فر
   def("oven-hob", "oven", "فر زیر گاز ۶۰", "ovenHob", 600, 870, 600),
   def("oven-tower", "oven", "فر ایستاده ۶۰", "ovenTower", 600, 2100, 580),
+  // پارامتریک
+  def("param-base", "param", "یونیت زمینی پارامتریک", "parametric", 600, 720, 500, {
+    elevation: 0,
+    countertop: false,
+    plinth: false,
+    parametric: true,
+  }),
   // ساده
   def("simple-box", "simple", "جعبه ساده ۶۰", "plain", 600, 870, 580, { countertop: false, plinth: false }),
   def("simple-filler", "simple", "فیلر باریک ۱۰", "plain", 100, 870, 580, { countertop: false, plinth: false }),
@@ -98,4 +109,9 @@ export const FALLBACK_DEFINITION: UnitDefinition = def(
 
 export function resolveDefinition(id: string): UnitDefinition {
   return getDefinition(id) ?? FALLBACK_DEFINITION;
+}
+
+/** Default construction parameters for a parametric unit. */
+export function defaultParamsFor(defId: string): import("./parametric").ParamUnitParams | undefined {
+  return getDefinition(defId)?.parametric ? DEFAULT_PARAMS : undefined;
 }
