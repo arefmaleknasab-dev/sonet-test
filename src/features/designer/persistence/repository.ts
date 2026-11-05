@@ -71,3 +71,16 @@ export const localProjectRepository: ProjectRepository = {
 };
 
 export const projectRepository: ProjectRepository = localProjectRepository;
+
+/**
+ * Synchronous read from the local cache (used during app boot so the first paint
+ * never waits on a promise). Falls back to null for non-local repositories.
+ */
+export function readProjectSync(id: string | null): Project | null {
+  if (!id) return null;
+  try {
+    return parseProject(JSON.parse(window.localStorage.getItem(KEY) ?? "{}")[id]);
+  } catch {
+    return null;
+  }
+}

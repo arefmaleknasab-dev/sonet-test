@@ -5,11 +5,12 @@ import { createProject, DEFAULT_NEW_PROJECT } from "../domain/factory";
 import { useApplyTheme } from "../hooks/useTheme";
 import { useShortcuts } from "../hooks/useShortcuts";
 import { saveCurrentProject } from "../persistence/actions";
-import { projectRepository } from "../persistence/repository";
+import { projectRepository, readProjectSync } from "../persistence/repository";
 import { usePrefs } from "../store/preferencesStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUiStore } from "../store/uiStore";
 import { Canvas2D } from "./canvas2d/Canvas2D";
+import { FontLoader } from "./FontLoader";
 import { NewProjectDialog } from "./dialogs/NewProjectDialog";
 import { OpenProjectDialog } from "./dialogs/OpenProjectDialog";
 import { PreferencesDialog } from "./dialogs/PreferencesDialog";
@@ -59,24 +60,36 @@ export function AppShell() {
   useApplyTheme();
 
   // Restore the last project (or start with a default kitchen) once on the client.
+  // Boot is fail-safe: a storage/quota/parse problem must never leave the app on the splash.
   useEffect(() => {
     let alive = true;
-    (async () => {
-      const lastId = projectRepository.getLastId();
-      const last = lastId ? await projectRepository.get(lastId) : null;
-      if (!alive) return;
-      if (last) useProjectStore.getState().replaceProject(last, { saved: true });
-      else useProjectStore.getState().replaceProject(createProject(DEFAULT_NEW_PROJECT));
-      setReady(true);
-    })();
+    const boot = () => {
+      try {
+        const lastId = projectRepository.getLastId();
+        const last = readProjectSync(lastId);
+        if (last) useProjectStore.getState().replaceProject(last, { saved: true });
+        else useProjectStore.getState().replaceProject(createProject(DEFAULT_NEW_PROJECT));
+      } catch {
+        useProjectStore.getState().replaceProject(createProject(DEFAULT_NEW_PROJECT));
+      } finally {
+        if (alive) setReady(true);
+      }
+    };
+    boot();
+    // Watchdog: if anything asynchronous ever blocks the boot, show the workspace anyway.
+    const t = setTimeout(() => {
+      if (alive) setReady(true);
+    }, 1500);
     return () => {
       alive = false;
+      clearTimeout(t);
     };
   }, []);
 
   if (!ready) {
     return (
       <div className="grid h-screen place-items-center bg-bg text-muted" dir="rtl">
+        <FontLoader />
         <div className="flex flex-col items-center gap-3">
           <div className="h-9 w-9 animate-pulse rounded-xl bg-accent" />
           <span className="text-[13px]" dir="ltr">
@@ -86,5 +99,10 @@ export function AppShell() {
       </div>
     );
   }
-  return <Workspace />;
+  return (
+    <>
+      <FontLoader />
+      <Workspace />
+    </>
+  );
 }
