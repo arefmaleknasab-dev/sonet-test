@@ -1,0 +1,117 @@
+/**
+ * Core domain types of Cabinex.
+ * All lengths are expressed in millimetres, angles in degrees.
+ *
+ * Coordinate system (plan view):
+ *   X → right, Y → down (towards the viewer in 2D), Z → elevation from the floor.
+ *   A unit's (x, y) is the centre of its footprint. At rotation 0 the unit's front faces +Y.
+ */
+
+export interface Vec2 {
+  x: number;
+  y: number;
+}
+
+export interface Rect {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+export type UnitCategoryId = "base" | "wall" | "tall" | "drawer" | "sink" | "oven" | "simple";
+
+/** Visual/functional front layout of a unit. Extend this union to add new unit families. */
+export type FrontStyle =
+  | "singleDoor"
+  | "doubleDoor"
+  | "tallDoors"
+  | "drawers"
+  | "sinkDoors"
+  | "ovenHob"
+  | "ovenTower"
+  | "fridge"
+  | "plain";
+
+export interface UnitCategory {
+  id: UnitCategoryId;
+  name: string;
+}
+
+export interface UnitDefinition {
+  id: string;
+  category: UnitCategoryId;
+  name: string;
+  style: FrontStyle;
+  drawerCount?: number;
+  dimensions: { width: number; height: number; depth: number };
+  /** Default elevation (Z) of the unit's bottom face. */
+  elevation: number;
+  countertop: boolean;
+  plinth: boolean;
+}
+
+export interface Material {
+  id: string;
+  name: string;
+  color: string;
+  roughness: number;
+  metalness: number;
+}
+
+/** A unit instance placed in a project. */
+export interface CabinetUnit {
+  id: string;
+  defId: string;
+  name: string;
+  width: number;
+  height: number;
+  depth: number;
+  x: number;
+  y: number;
+  z: number;
+  rotation: number;
+  materialId: string;
+}
+
+export interface Wall {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  thickness: number;
+  height: number;
+}
+
+export type RoomTemplateId = "rectangle" | "lShape" | "uShape" | "empty";
+
+export interface Room {
+  kind: "kitchen";
+  template: RoomTemplateId;
+  /** Interior floor polygon, null for free-drawn rooms. */
+  floor: Vec2[] | null;
+  ceilingHeight: number;
+}
+
+export interface Project {
+  schemaVersion: 1;
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  room: Room;
+  walls: Wall[];
+  units: CabinetUnit[];
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  updatedAt: number;
+  unitCount: number;
+}
+
+export type ViewMode = "2d" | "3d";
+export type ToolId = "select" | "wall" | "pan";
+export type WallMode3D = "full" | "ghost" | "hidden";
